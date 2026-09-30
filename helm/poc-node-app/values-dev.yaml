@@ -1,0 +1,72 @@
+app: poc-node-app
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 487916111349.dkr.ecr.us-east-1.amazonaws.com/poc-node-app
+  pullPolicy: Always
+  tag: "dev-latest"
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+envVariables:
+  - name: PORT
+    value: "3000"
+  - name: ENV
+    value: "dev"
+  - name: APP_VERSION
+    value: "1.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  container_port: 3000
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+  hosts:
+    - host: ""
+      paths:
+        - path: /poc-node-app
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+volumes:
+  - name: logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: logs
+    mountPath: "/opt/logs/"
+    readOnly: false
+
+tolerations: []
+nodeSelector: {}
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}

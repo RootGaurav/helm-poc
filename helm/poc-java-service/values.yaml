@@ -1,0 +1,63 @@
+app: poc-java-service
+envName: dev
+replicaCount: 1
+
+image:
+  repository: poc-java-service
+  pullPolicy: Never
+  tag: "dev-latest"
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+envVariables:
+  - name: MIN_HEAP
+    value: "-Xms128m"
+  - name: MAX_HEAP
+    value: "-Xmx256m"
+  - name: ENV
+    value: "dev"
+
+service:
+  type: NodePort
+  port: 80
+
+containerInfo:
+  containerPort: 8080
+  healthCheck: enable
+  healthUrl: /poc-java-service/actuator/health
+  initialDelaySeconds: 40
+  timeoutSeconds: 10
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 400Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+
+volumes:
+  - name: logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: logs
+    mountPath: "/opt/logs/"
+    readOnly: false
+
+ingress:
+  enabled: false
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}

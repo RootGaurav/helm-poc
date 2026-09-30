@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app }}
+  namespace: {{ .Values.envName }}
+  labels:
+    app: {{ .Values.app }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.app }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.app }}
+    spec:
+      serviceAccountName: {{ .Values.app }}
+      containers:
+        - name: {{ .Values.app }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.containerInfo.containerPort }}
+          {{- if .Values.envVariables }}
+          env:
+            {{- toYaml .Values.envVariables | nindent 12 }}
+          {{- end }}
+          {{- if eq .Values.containerInfo.healthCheck "enable" }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.containerInfo.healthUrl }}
+              port: {{ .Values.containerInfo.containerPort }}
+            initialDelaySeconds: {{ .Values.containerInfo.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.containerInfo.timeoutSeconds }}
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.containerInfo.healthUrl }}
+              port: {{ .Values.containerInfo.containerPort }}
+            initialDelaySeconds: {{ .Values.containerInfo.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.containerInfo.timeoutSeconds }}
+            periodSeconds: 10
+            failureThreshold: 3
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml .Values.volumeMounts | nindent 12 }}
+          {{- end }}
+      {{- if .Values.volumes }}
+      volumes:
+        {{- toYaml .Values.volumes | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,78 @@
+app: poc-java-service
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 487916111349.dkr.ecr.us-east-1.amazonaws.com/poc-java-service
+  pullPolicy: Always
+  tag: "dev-latest"
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+envVariables:
+  - name: MIN_HEAP
+    value: "-Xms256m"
+  - name: MAX_HEAP
+    value: "-Xmx512m"
+  - name: ENV
+    value: "dev"
+
+service:
+  type: ClusterIP
+  port: 80
+
+containerInfo:
+  containerPort: 8080
+  healthCheck: enable
+  healthUrl: /poc-java-service/actuator/health
+  initialDelaySeconds: 60
+  timeoutSeconds: 10
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /poc-java-service/actuator/health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+  hosts:
+    - host: ""
+      paths:
+        - path: /poc-java-service
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 600Mi
+  requests:
+    cpu: 100m
+    memory: 300Mi
+
+autoscaling:
+  enabled: false
+
+volumes:
+  - name: logs
+    emptyDir: {}
+
+volumeMounts:
+  - name: logs
+    mountPath: "/opt/logs/"
+    readOnly: false
+
+tolerations: []
+nodeSelector: {}
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}
