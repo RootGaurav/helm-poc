@@ -1,0 +1,88 @@
+# Default values for poc-node-app
+# Pattern: frontend-web se liya gaya (container_port wala)
+app: poc-node-app
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-node-app
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::454578700264:role/vr-shared-app-role
+  name: ""
+
+# Node app env vars
+envVariables:
+  - name: PORT
+    value: "3000"
+  - name: ENV
+    value: "dev"
+  - name: APP_VERSION
+    value: "1.0.0"
+  - name: API_BASE_URL
+    value: "https://dev-api.videoready.tv"
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}
+
+# frontend-web pattern: service has port + container_port separately
+service:
+  type: ClusterIP
+  port: 80
+  container_port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dev-poc-node.videoready.tv
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1000Mi
+  requests:
+    cpu: 25m
+    memory: 500Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+volumes:
+  - name: logs
+    hostPath:
+      path: /opt/logs/
+
+volumeMounts:
+  - name: logs
+    mountPath: "/opt/logs/"
+    readOnly: true
+
+nodeSelector: {}
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: dev
+
+affinity: {}

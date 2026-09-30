@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app }}
+  namespace: {{ .Values.envName }}
+  labels:
+    app: {{ .Values.app }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.app }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.app }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.app }}
+
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      containers:
+        - name: {{ .Values.app }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - containerPort: {{ .Values.containerInfo.containerPort }}
+              protocol: TCP
+
+          # ── Env vars from values.yaml envVariables list ─────────────────
+          # Same pattern as subscriber-event-service
+          {{- if .Values.envVariables }}
+          env:
+            {{- toYaml .Values.envVariables | nindent 12 }}
+          {{- end }}
+
+          # ── Health checks (liveness + readiness) ────────────────────────
+          {{- if eq .Values.containerInfo.healthCheck "enable" }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.containerInfo.healthUrl }}
+              port: {{ .Values.containerInfo.containerPort }}
+            initialDelaySeconds: {{ .Values.containerInfo.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.containerInfo.timeoutSeconds }}
+            periodSeconds: 15
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.containerInfo.healthUrl }}
+              port: {{ .Values.containerInfo.containerPort }}
+            initialDelaySeconds: {{ .Values.containerInfo.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.containerInfo.timeoutSeconds }}
+            periodSeconds: 10
+            failureThreshold: 3
+          {{- end }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ── Volume mounts (logs + secrets-store CSI) ────────────────────
+          {{- if .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml .Values.volumeMounts | nindent 12 }}
+          {{- end }}
+
+      # ── Volumes (hostPath logs + CSI secret provider) ─────────────────
+      {{- if .Values.volumes }}
+      volumes:
+        {{- toYaml .Values.volumes | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

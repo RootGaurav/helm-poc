@@ -1,0 +1,42 @@
+# UAT environment overrides
+app: poc-java-service
+envName: uat
+replicaCount: 2
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-java-service
+  tag: "uat-latest"
+
+envVariables:
+  - name: MODULE
+    value: poc-java-service
+  - name: MIN_HEAP
+    value: "-Xms512m"
+  - name: MAX_HEAP
+    value: "-Xmx1200m"
+  - name: ENV
+    value: "common,uat"
+  - name: SWAGGER_HOST
+    value: "uat-api.videoready.tv"
+  - name: DB_HOST
+    value: "uat-db.internal"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "poc_db_uat"
+  - name: KAFKA_BOOTSTRAP_SERVERS
+    value: "uat-kafka:9092"
+
+resources:
+  limits:
+    cpu: 800m
+    memory: 1500Mi
+  requests:
+    cpu: 100m
+    memory: 800Mi
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: uat

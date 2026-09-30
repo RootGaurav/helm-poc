@@ -1,0 +1,23 @@
+app: poc-node-app
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-node-app
+  tag: "dev-latest"
+
+envVariables:
+  - name: PORT
+    value: "3000"
+  - name: ENV
+    value: "dev"
+  - name: APP_VERSION
+    value: "1.0.0"
+  - name: API_BASE_URL
+    value: "https://dev-api.videoready.tv"
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: dev

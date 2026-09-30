@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.app }}
+  namespace: {{ .Values.envName }}
+  labels:
+    app: {{ .Values.app }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ .Values.app }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.service.port }}            # ClusterIP port (80)
+      targetPort: {{ .Values.service.container_port }}  # Container port (3000)

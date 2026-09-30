@@ -1,0 +1,34 @@
+# DEV environment overrides
+app: poc-java-service
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-java-service
+  tag: "dev-latest"
+
+envVariables:
+  - name: MODULE
+    value: poc-java-service
+  - name: MIN_HEAP
+    value: "-Xms256m"
+  - name: MAX_HEAP
+    value: "-Xmx512m"
+  - name: ENV
+    value: "common,dev"
+  - name: SWAGGER_HOST
+    value: "dev-api.videoready.tv"
+  - name: DB_HOST
+    value: "dev-db.internal"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "poc_db_dev"
+  - name: KAFKA_BOOTSTRAP_SERVERS
+    value: "dev-kafka:9092"
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: dev

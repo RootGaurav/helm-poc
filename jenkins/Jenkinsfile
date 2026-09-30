@@ -1,0 +1,268 @@
+// ═══════════════════════════════════════════════════════════════════
+// POC PIPELINE  —  supports: poc-java-service | poc-node-app
+//
+// Job naming convention (MUST match):
+//   vr-{env_name}-{app_name}
+//   e.g.  vr-dev-poc-java-service
+//         vr-dev-poc-node-app
+//
+// ═══════════════════════════════════════════════════════════════════
+
+// ── 1. App → GitLab repo mapping (add every new app here) ──────────
+def repo_url = [
+    'poc-java-service' : 'git@gitlab.intelligrape.net:poc/poc-java-service.git',
+    'poc-node-app'     : 'git@gitlab.intelligrape.net:poc/poc-node-app.git',
+]
+
+pipeline {
+    agent { label 'built-in' }
+
+    environment {
+        ECR_URL      = "454578700264.dkr.ecr.ap-south-1.amazonaws.com"
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    parameters {
+        string(name: 'branch_name',    defaultValue: 'main', trim: true,
+               description: 'Git branch to build')
+        choice(name: 'sonar_enabled',  choices: ['true', 'false'],
+               description: 'Enable SonarQube analysis')
+    }
+
+    stages {
+
+        // ── STAGE 1: Git Checkout ─────────────────────────────────────
+        stage('git checkout') {
+            steps {
+                script {
+                    // Extract app_name from job: vr-dev-poc-java-service → poc-java-service
+                    app_name = sh(
+                        script: "printf \"\"\"`echo \${JOB_NAME} | cut -d '-' -f3-`",
+                        returnStdout: true
+                    ).trim()
+
+                    def appRepoUrl = repo_url[app_name]
+                    if (!appRepoUrl) {
+                        error("No git URL mapped for app_name=${app_name}. Add it to repo_url map.")
+                    }
+
+                    // Standard checkout (same as non-frontend services in original pipeline)
+                    git branch: "${params.branch_name}",
+                        credentialsId: "gitlab-user",
+                        url: appRepoUrl
+
+                    // Extract env_name: vr-dev-poc-java-service → dev
+                    env_name = sh(
+                        script: "printf \"\"\"`echo \${JOB_NAME} | cut -d '-' -f2`",
+                        returnStdout: true
+                    ).trim()
+
+                    // Short commit hash for image tag
+                    commit_id = sh(
+                        script: "printf \$(git rev-parse --short HEAD)",
+                        returnStdout: true
+                    ).trim()
+
+                    aws_region = sh(
+                        script: "echo ${ECR_URL} | cut -d . -f 4",
+                        returnStdout: true
+                    ).trim()
+
+                    // Sanitize branch name: '/' → '-'  (Docker tags cannot have '/')
+                    image_tag = "${env_name}-${params.branch_name.replaceAll('[^a-zA-Z0-9_.-]', '-')}-${commit_id}"
+
+                    echo "══════════════════════════════════════"
+                    echo " app_name  : ${app_name}"
+                    echo " env_name  : ${env_name}"
+                    echo " branch    : ${params.branch_name}"
+                    echo " commit_id : ${commit_id}"
+                    echo " image_tag : ${image_tag}"
+                    echo "══════════════════════════════════════"
+                }
+            }
+        }
+
+        // ── STAGE 2: SonarQube Analysis ───────────────────────────────
+        stage('SonarQube Analysis') {
+            when {
+                expression { params.sonar_enabled == 'true' }
+            }
+            steps {
+                withSonarQubeEnv('sonar-uat') {
+                    script {
+                        if (app_name == 'poc-node-app') {
+                            // Node: install deps + run coverage + sonar-scanner
+                            withCredentials([string(credentialsId: 'sonar-uat', variable: 'SONAR_UAT_TOKEN')]) {
+                                sh """
+                                    export NVM_DIR="\$WORKSPACE/.nvm"
+                                    export PROFILE=/dev/null
+                                    mkdir -p \$NVM_DIR
+
+                                    if [ ! -s "\$NVM_DIR/nvm.sh" ]; then
+                                        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+                                    fi
+                                    [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+
+                                    nvm install 20
+                                    nvm use 20
+
+                                    echo "Node: \$(node -v) | NPM: \$(npm -v)"
+
+                                    npm ci
+
+                                    # Run coverage if script exists
+                                    if node -e "const p=require('./package.json'); process.exit((p.scripts&&p.scripts['test:coverage'])?0:1)" 2>/dev/null; then
+                                        npm run test:coverage || true
+                                    else
+                                        echo "No test:coverage script — skipping (Sonar still runs)"
+                                    fi
+
+                                    unset SONAR_AUTH_TOKEN SONAR_TOKEN || true
+                                    export SONAR_TOKEN="\${SONAR_UAT_TOKEN}"
+
+                                    \$SCANNER_HOME/bin/sonar-scanner \\
+                                        -Dsonar.projectKey=${env.JOB_NAME} \\
+                                        -Dsonar.projectName=${env.JOB_NAME} \\
+                                        -Dsonar.token="\${SONAR_TOKEN}" \\
+                                        -Dsonar.javascript.lcov.reportPaths="coverage/lcov.info"
+                                """
+                            }
+
+                        } else if (app_name == 'poc-java-service') {
+                            // Java: Gradle runs tests + jacoco + sonar in one command
+                            sh """
+                                if [ -n "\${SONAR_AUTH_TOKEN:-}" ] && [ -z "\${SONAR_TOKEN:-}" ]; then
+                                    export SONAR_TOKEN="\${SONAR_AUTH_TOKEN}"
+                                fi
+                                if [ -z "\${SONAR_TOKEN:-}" ]; then
+                                    echo "ERROR: No SONAR_TOKEN. Configure sonar-uat credential in Jenkins."
+                                    exit 1
+                                fi
+                                ./gradlew clean test jacocoTestReport sonar --no-daemon \\
+                                    -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=1024m" \\
+                                    -Dsonar.projectKey=${env.JOB_NAME} \\
+                                    -Dsonar.projectName=${env.JOB_NAME} \\
+                                    -Dsonar.host.url=http://10.100.5.98:9000 \\
+                                    -Dsonar.token="\${SONAR_TOKEN}"
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── STAGE 3: Quality Gate ─────────────────────────────────────
+        stage('Quality Gate') {
+            when {
+                allOf {
+                    expression { params.sonar_enabled == 'true' }
+                    // Add more apps here as you onboard them
+                    expression {
+                        env.JOB_NAME.contains('poc-java-service') ||
+                        env.JOB_NAME.contains('poc-node-app')
+                    }
+                }
+            }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ── STAGE 4: Build & Push Docker Image ────────────────────────
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    // ── 2. Dockerfile path per app ──────────────────────────
+                    // Add new apps here with their custom Dockerfile path
+                    def dockerfile = "Dockerfile"   // default
+                    switch (app_name) {
+                        case 'poc-java-service':
+                            dockerfile = 'Dockerfile'
+                            break
+                        case 'poc-node-app':
+                            dockerfile = 'Dockerfile'
+                            break
+                        // Add more cases as you onboard new apps:
+                        // case 'poc-another-service':
+                        //     dockerfile = 'docker/Dockerfile.prod'
+                        //     break
+                    }
+
+                    sh """#!/bin/bash
+                    set -xe
+
+                    # Login to ECR
+                    aws ecr get-login-password --region ${aws_region} | \\
+                        docker login --username AWS --password-stdin ${ECR_URL}
+
+                    # Build image with two tags:
+                    #   1. Unique tag: {env}-{branch}-{commitId}  → for rollbacks
+                    #   2. latest tag: {env}-latest               → for helm default
+                    docker build \\
+                        -t ${ECR_URL}/${app_name}:${image_tag} \\
+                        -t ${ECR_URL}/${app_name}:${env_name}-latest \\
+                        -f ${dockerfile} .
+
+                    docker push ${ECR_URL}/${app_name}:${image_tag}
+                    docker push ${ECR_URL}/${app_name}:${env_name}-latest
+
+                    echo "✅ Pushed: ${ECR_URL}/${app_name}:${image_tag}"
+                    """
+                }
+            }
+        }
+
+        // ── STAGE 5: Checkout Helm Repo ───────────────────────────────
+        stage('Checkout Helm Repo') {
+            steps {
+                script {
+                    cleanWs()
+                    git branch: "vr-shared",
+                        credentialsId: "gitlab-user",
+                        url: "git@gitlab.intelligrape.net:devops/vr2-helm.git"
+                }
+            }
+        }
+
+        // ── STAGE 6: Deploy via Helm ──────────────────────────────────
+        stage('Deploy Service') {
+            steps {
+                script {
+                    sh """#!/bin/bash
+                        set -xe
+                        cd ${app_name}
+
+                        echo "Deploying ${app_name} to namespace ${env_name}..."
+                        echo "Image tag: ${image_tag}"
+
+                        # helm upgrade --install is idempotent:
+                        # - First run: installs
+                        # - Subsequent runs: upgrades
+                        helm upgrade ${app_name} . \\
+                            --install \\
+                            --set image.tag=${image_tag} \\
+                            -f values-${env_name}.yaml \\
+                            -n ${env_name}
+
+                        echo "✅ Deployed ${app_name}:${image_tag} → namespace ${env_name}"
+                    """
+                }
+            }
+        }
+
+    } // end stages
+
+    post {
+        success {
+            echo "✅ Pipeline SUCCESS: ${app_name}:${image_tag} deployed to ${env_name}"
+        }
+        failure {
+            echo "❌ Pipeline FAILED: ${app_name} on branch ${params.branch_name}"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

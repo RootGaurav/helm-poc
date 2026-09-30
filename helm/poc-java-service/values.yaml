@@ -1,0 +1,112 @@
+# Default values for poc-java-service
+# Pattern: subscriber-event-service se liya gaya
+app: poc-java-service
+envName: dev
+replicaCount: 1
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-java-service
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::454578700264:role/vr-shared-app-role
+  name: ""
+
+# Env vars injected into container (same as subscriber-event-service)
+envVariables:
+  - name: MODULE
+    value: poc-java-service
+  - name: MIN_HEAP
+    value: "-Xms256m"
+  - name: MAX_HEAP
+    value: "-Xmx512m"
+  - name: ENV
+    value: "dev"
+  - name: SWAGGER_HOST
+    value: "dev-api.videoready.tv"
+  - name: DB_HOST
+    value: "dev-db.internal"
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "poc_db"
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Matches subscriber-event-service containerInfo pattern exactly
+containerInfo:
+  containerPort: 8080
+  healthCheck: enable
+  healthUrl: /poc-java-service/actuator/health
+  initialDelaySeconds: 60
+  timeoutSeconds: 60
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dev-poc-java.videoready.tv
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1000Mi
+  requests:
+    cpu: 25m
+    memory: 500Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+volumes:
+  - name: logs
+    hostPath:
+      path: /opt/logs/
+  - name: creds-volume
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: poc-java-service-aws-secrets
+
+volumeMounts:
+  - name: logs
+    mountPath: "/opt/logs/"
+    readOnly: false
+  - name: creds-volume
+    mountPath: "/mnt/api"
+    readOnly: true
+
+nodeSelector: {}
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: dev
+
+affinity: {}

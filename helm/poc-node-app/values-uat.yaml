@@ -1,0 +1,31 @@
+app: poc-node-app
+envName: uat
+replicaCount: 2
+
+image:
+  repository: 454578700264.dkr.ecr.ap-south-1.amazonaws.com/poc-node-app
+  tag: "uat-latest"
+
+envVariables:
+  - name: PORT
+    value: "3000"
+  - name: ENV
+    value: "uat"
+  - name: APP_VERSION
+    value: "1.0.0"
+  - name: API_BASE_URL
+    value: "https://uat-api.videoready.tv"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1000Mi
+  requests:
+    cpu: 50m
+    memory: 256Mi
+
+tolerations:
+  - effect: NoExecute
+    key: Environment
+    operator: Equal
+    value: uat
